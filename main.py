@@ -68,7 +68,7 @@ def detect_content_region(cap, sample_frames=50):
             left += np.min(bright_cols)
             right = left + len(bright_cols)
 
-        # measure how much of cropped region is dark
+        # measure dark ratio
         crop_brightness = brightness_profile[left:right]
         dark_ratio = np.mean(crop_brightness < 20) if len(crop_brightness) > 0 else 1.0
 
@@ -85,10 +85,8 @@ def detect_content_region(cap, sample_frames=50):
         if left >= right:
             left, right = 0, w
 
-        # 🟢 NEW: print phần bị loại trước threshold 0.05
         removed_ratio = (w - (right - left)) / w
         print(f"   └─ Pre-crop check (threshold={threshold:.2f}): removed={removed_ratio:.2%}")
-
         return left, right, right - left, dark_ratio
 
     # --- First pass (threshold = 0.05)
@@ -99,7 +97,7 @@ def detect_content_region(cap, sample_frames=50):
     removed = 1 - ratio
     print(f"🧪 Threshold 0.05: keep={ratio:.2f}, removed={removed:.2f}, dark={dark_ratio:.2f}")
 
-    # Nếu threshold 0.05 mà phần bị loại bỏ (removed) nhiều -> thử lại với 0.2
+    # Nếu threshold 0.05 mà phần bị loại bỏ nhiều -> thử lại với 0.2
     if removed > 0.1:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         x1b, x2b, crop_wb, dark_ratio2 = compute_crop(0.2)
@@ -107,12 +105,14 @@ def detect_content_region(cap, sample_frames=50):
         removed2 = 1 - ratio2
         print(f"🔁 Threshold 0.2: keep={ratio2:.2f}, removed={removed2:.2f}, dark={dark_ratio2:.2f}")
 
-        # Nếu 0.2 vẫn sáng, không quá hẹp -> dùng 0.2
-        if dark_ratio2 < 0.5 and crop_wb > MIN_WIDTH:
+        # Nếu threshold 0.2 vẫn sáng, không quá hẹp, và không bị cắt quá 75% -> dùng 0.2
+        if dark_ratio2 < 0.5 and crop_wb > MIN_WIDTH and removed2 < 0.75:
             print("✅ Using threshold 0.2 (cleaner crop)")
             return x1b, x2b
+        else:
+            print("⚙️  Threshold 0.2 too aggressive, reverting to 0.05")
 
-    print("✅ Using threshold 0.1 (initial crop)")
+    print("✅ Using threshold 0.05 (initial crop)")
     if crop_w <= 0:
         x1, x2 = 0, w
     return x1, x2
